@@ -2,7 +2,7 @@
 
 A minimalist UserScript to add a one-click button for copying video transcripts on YouTube.
 
-![Screenshot of the transcript button](https://imgur.com/a/00LIu4j)
+Screenshot of the transcript button : https://imgur.com/a/00LIu4j
 
 ## Features
 
