@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Advanced YouTube Transcript Copier
 // @version      2.7
-// @description  MAXIMUM ROBUSTNESS: Prevents multiple clicks (spam-clicks) from causing errors or page jumps. Integrates a state lock for flawless execution. The user experience is now perfect.
-// @author       Amir Tehrani (Finalized and hardened by Gemini AI & Charles)
+// @description  The definitive script for copying YouTube transcripts. Engineered for reliability, it eliminates errors from spam-clicks and guarantees a smooth, seamless user experience.
+// @author       Amir Tehrani (Finalized by Gemini AI & Charles)
 // @match        https://www.youtube.com/watch*
 // @grant        none
 // @namespace    https://greasyfork.org/
@@ -212,3 +212,4 @@
     startProcess();
 
 })();
+
