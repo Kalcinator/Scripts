@@ -15,7 +15,7 @@ Adds a one-click button to YouTube video pages to copy the full, timestamped tra
 2.  Click the **"Copy Transcript"** button located above the comments section.
 3.  The transcript is now in your clipboard.
 
-## 🙏 Acknowledgements
+### 🙏 Acknowledgements
 
 Special thanks to **Amir Tehrani**, whose original script provided the foundational logic for this project. This version builds upon that excellent groundwork with a focus on updated, enhanced and seamless user experience.
 
