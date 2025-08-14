@@ -1,23 +1,20 @@
 # YouTube Transcript Copier
 
-A minimalist UserScript to add a one-click button for copying video transcripts on YouTube.
+Adds a one-click button to YouTube video pages to copy the full, timestamped transcript to your clipboard.
 
-Screenshot of the transcript button : https://imgur.com/a/00LIu4j
+### ✨ Features
 
-## Features
+*   **One-Click Copy:** Adds a "Copy Transcript" button above the comments.
+*   **Timestamped Format:** Copies the full transcript with clean timestamps.
+*   **Seamless & Robust:** Works in the background without page jumps and handles errors gracefully.
+*   **Dynamic Page Support:** Works perfectly as you navigate between YouTube videos.
 
-*   **One-Click Copy:** Copies the entire video transcript to your clipboard with a single click.
-*   **Timestamps Included:** Automatically includes timestamps for each line.
-*   **Elegant Placement:** Adds a discreet button just above the comments section, keeping the main UI clean.
-*   **SPA-Ready:** Works seamlessly as you navigate between videos without needing a page refresh.
+### 📋 How to Use
 
-## Installation
+1.  Go to any YouTube video with a transcript.
+2.  Click the **"Copy Transcript"** button located above the comments section.
+3.  The transcript is now in your clipboard.
 
-1.  Make sure you have a userscript manager installed, such as [Violentmonkey](https://violentmonkey.github.io/) or [Tampermonkey](https://www.tampermonkey.net/).
-2.  Click on the installation link below:
+---
 
-    **[➡️ Install Script](https://github.com/Kalcinator/Youtube-Script-Copier/blob/main/youtube_transcript_copier.js)**
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+*This project is licensed under the MIT License.*
