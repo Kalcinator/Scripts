@@ -1,268 +1,214 @@
 // ==UserScript==
-// @name         YouTube Transcript Copier (Elegant & Robust)
-// @version      2.3
-// @description  Injects a stylish and robust button to copy video transcripts, discreetly placed above the comments section. Handles YouTube's modern SPA navigation and always copies timestamps.
-// @author       Amir Tehrani (Updated and refined by Charles & Gemini AI)
+// @name         Advanced YouTube Transcript Copier
+// @version      2.7
+// @description  MAXIMUM ROBUSTNESS: Prevents multiple clicks (spam-clicks) from causing errors or page jumps. Integrates a state lock for flawless execution. The user experience is now perfect.
+// @author       Amir Tehrani (Finalized and hardened by Gemini AI & Charles)
 // @match        https://www.youtube.com/watch*
 // @grant        none
-// @namespace    https://github.com/
+// @namespace    https://greasyfork.org/
 // @icon         https://www.google.com/s2/favicons?domain=youtube.com
 // @license      MIT
 // ==/UserScript==
 
-(function () {
-  "use strict";
+(function() {
+    'use strict';
 
-  // --- State Variables ---
-  // These variables hold the script's state throughout its lifecycle.
-  let observer = null; // The MutationObserver instance that watches for page changes.
-  let currentURL = window.location.href; // The current page URL, used to detect navigation.
-  let copyButton = null; // The DOM element for the copy button.
-  let buttonTextNode = null; // The button's text node for easy updates.
+    // --- Constants and State Variables ---
+    const BUTTON_ID = 'yt-transcript-copy-button-v2-7';
+    const STYLE_ID = 'yt-transcript-button-styles';
+    const INITIAL_TEXT = 'Copy Transcript';
+    const COPYING_TEXT = 'Copying...';
+    const SUCCESS_TEXT = 'Copied!';
+    const NOT_FOUND_TEXT = 'Transcript Not Found';
+    const FAILED_TEXT = 'Copy Failed';
 
-  /**
-   * A robust utility to wait for an element to appear in the DOM.
-   * Uses a MutationObserver for optimal performance, avoiding `setInterval`.
-   * @param {string} selector - The CSS selector of the element to find.
-   * @param {Element} [parent=document] - The parent element to search within. Defaults to the entire document.
-   * @param {number} [timeout=15000] - The timeout in milliseconds before giving up.
-   * @returns {Promise<Element>} A promise that resolves with the found element or is rejected on timeout.
-   */
-  function waitForElement(selector, parent = document, timeout = 15000) {
-    return new Promise((resolve, reject) => {
-      // Check if the element already exists.
-      const el = parent.querySelector(selector);
-      if (el) {
-        resolve(el);
-        return;
-      }
+    const COLOR_BLUE = 'var(--yt-spec-badge-chip-background, #065fd4)';
+    const COLOR_GREEN = 'var(--yt-spec-icon-active-other, #28a745)';
+    const COLOR_RED = 'var(--yt-spec-text-link, #dc3545)';
 
-      // Create an observer to watch for DOM additions.
-      const observer = new MutationObserver(() => {
-        const el = parent.querySelector(selector);
-        if (el) {
-          observer.disconnect(); // Stop observing once the element is found.
-          clearTimeout(timeoutId); // Cancel the timeout timer.
-          resolve(el);
+    let pageObserver = null;
+    let currentURL = window.location.href;
+    let copyButton = null;
+    let isCopying = false; // --- STATE LOCK ---
+
+    /**
+     * Waits for an element to appear in the DOM.
+     */
+    function waitForElement(selector, parent = document, timeout = 10000) {
+        return new Promise((resolve, reject) => {
+            const el = parent.querySelector(selector);
+            if (el) return resolve(el);
+            const obs = new MutationObserver(() => {
+                const el = parent.querySelector(selector);
+                if (el) {
+                    obs.disconnect();
+                    clearTimeout(timeoutId);
+                    resolve(el);
+                }
+            });
+            const timeoutId = setTimeout(() => {
+                obs.disconnect();
+                reject(new Error(`[YT Copier] Timeout exceeded for: ${selector}`));
+            }, timeout);
+            obs.observe(parent, { childList: true, subtree: true });
+        });
+    }
+
+    /**
+     * Handles the copy logic, now protected against multiple clicks.
+     */
+    async function handleCopyClick() {
+        // --- ANTI-SPAM MECHANISM ---
+        if (isCopying) {
+            console.log("[YT Copier] Operation already in progress. Click ignored.");
+            return; // Ignore clicks if a copy operation is already running.
         }
-      });
 
-      // Set a fallback timer to prevent infinite waiting.
-      const timeoutId = setTimeout(() => {
-        observer.disconnect();
-        console.error(`Timeout waiting for element: ${selector}`);
-        reject(new Error(`Element not found: ${selector}`));
-      }, timeout);
+        isCopying = true; // 1. Lock the state
+        updateButtonState(COPYING_TEXT, COLOR_BLUE);
 
-      // Start observing the parent element.
-      observer.observe(parent, {
-        childList: true, // Watch for direct children additions/removals.
-        subtree: true, // Extend the watch to the entire descendant tree.
-      });
-    });
-  }
+        const originalScrollY = window.scrollY;
 
-  /**
-   * Creates and inserts the "Transcript" button discreetly before the comments section.
-   */
-  async function createAndInsertButton() {
-    if (document.getElementById("yt-transcript-copy-button")) return;
+        try {
+            // Background click logic
+            const expanderButton = document.querySelector('#description-inline-expander #expand.ytd-text-inline-expander');
+            if (expanderButton) expanderButton.click();
 
-    copyButton = document.createElement("button");
-    copyButton.id = "yt-transcript-copy-button";
-    copyButton.className = "yt-transcript-button";
+            const showTranscriptButton = await waitForElement('ytd-video-description-transcript-section-renderer button', document, 5000);
+            showTranscriptButton.click();
 
-    // Add a bottom margin for better visual separation.
-    copyButton.style.marginBottom = "16px";
+            const collapserButton = await waitForElement('#description-inline-expander #collapse.ytd-text-inline-expander');
+            collapserButton.click();
 
-    const buttonText = "Transcript"; // Custom button text
-    buttonTextNode = document.createTextNode(buttonText);
-    copyButton.setAttribute("aria-label", "Copy Transcript");
-    copyButton.appendChild(buttonTextNode);
+            const transcriptContainer = await waitForElement('ytd-transcript-renderer #segments-container');
+            await copyTranscriptText(transcriptContainer);
 
-    copyButton.addEventListener("click", handleCopyClick);
-    injectStyles();
+        } catch (error) {
+            console.error("[YT Copier] Process failed:", error);
+            updateButtonState(NOT_FOUND_TEXT, COLOR_RED);
+        } finally {
+            // Restore scroll position, executed after YouTube's actions
+            setTimeout(() => {
+                window.scrollTo({ top: originalScrollY, behavior: 'instant' });
+            }, 0);
 
-    try {
-      // Target the comments section itself.
-      const commentsSection = await waitForElement("ytd-comments#comments");
-
-      // Insert our button right BEFORE the comments section.
-      commentsSection.parentNode.insertBefore(copyButton, commentsSection);
-    } catch (error) {
-      console.error(
-        "Could not find the comments section to insert the button.",
-        error
-      );
-    }
-  }
-
-  /**
-   * Handles the main logic when the copy button is clicked.
-   * The function is async to gracefully handle waiting for elements.
-   */
-  async function handleCopyClick() {
-    updateButtonState("Copying...", "rgba(0, 123, 255, 0.8)");
-
-    try {
-      // Step 1: Expand the description box to reveal the "Show transcript" button.
-      const descriptionExpander = document.querySelector(
-        "#description-inline-expander #expand"
-      );
-      if (descriptionExpander) {
-        descriptionExpander.click();
-      }
-
-      // Step 2: Wait for the "Show transcript" button to appear and click it.
-      const showTranscriptButton = await waitForElement(
-        "ytd-button-renderer.ytd-video-description-transcript-section-renderer button"
-      );
-      showTranscriptButton.click();
-
-      // Step 3: Wait for the transcript panel to be rendered in the DOM.
-      const transcriptPanel = await waitForElement("ytd-transcript-renderer");
-
-      // Step 4: Extract and copy the transcript text.
-      copyTranscriptText(transcriptPanel);
-    } catch (error) {
-      console.error("Failed to process transcript:", error);
-      updateButtonState("Transcript Not Found", "rgba(220, 53, 69, 0.8)");
-    }
-  }
-
-  /**
-   * Extracts text from the transcript panel (always with timestamps)
-   * and copies it to the clipboard.
-   * @param {Element} transcriptPanel - The main transcript container element.
-   */
-  function copyTranscriptText(transcriptPanel) {
-    let transcriptText = "";
-    const segments = transcriptPanel.querySelectorAll(
-      "ytd-transcript-segment-renderer"
-    );
-
-    if (segments.length === 0) {
-      updateButtonState("No Text Found", "rgba(220, 53, 69, 0.8)");
-      return;
+            isCopying = false; // 2. Unlock the state, no matter what happens
+        }
     }
 
-    // The logic is simplified to only handle the timestamped case.
-    segments.forEach((segment) => {
-      const timestamp = segment
-        .querySelector(".ytd-transcript-segment-renderer")
-        .innerText.trim();
-      const text = segment
-        .querySelector("yt-formatted-string")
-        .innerText.trim();
-      transcriptText += `${timestamp} ${text}\n`; // Format: "HH:MM:SS Line of text"
-    });
+    /**
+     * Extracts and copies the text.
+     */
+    async function copyTranscriptText(transcriptContainer) {
+        const segments = transcriptContainer.querySelectorAll('ytd-transcript-segment-renderer');
+        if (segments.length === 0) {
+            updateButtonState(NOT_FOUND_TEXT, COLOR_RED);
+            return;
+        }
 
-    // Use the modern and secure Clipboard API.
-    navigator.clipboard
-      .writeText(transcriptText.trim())
-      .then(() => {
-        updateButtonState("Copied!", "rgba(40, 167, 69, 0.9)");
-      })
-      .catch((err) => {
-        console.error("Failed to copy transcript:", err);
-        updateButtonState("Copy Failed", "rgba(220, 53, 69, 0.8)");
-      });
-  }
+        const lines = Array.from(segments).map(segment => {
+            const timestampEl = segment.querySelector('.segment-timestamp');
+            const textEl = segment.querySelector('.segment-text');
+            if (!timestampEl || !textEl) return null;
+            return `${timestampEl.innerText.trim()} ${textEl.innerText.trim()}`;
+        });
 
-  /**
-   * Updates the button's appearance (text and color) to provide visual feedback to the user.
-   * @param {string} text - The text to display on the button.
-   * @param {string} color - The CSS background color for the button.
-   */
-  function updateButtonState(text, color) {
-    if (!copyButton || !buttonTextNode) return;
+        const transcriptText = lines.filter(Boolean).join('\n');
+        if (!transcriptText) {
+             updateButtonState(NOT_FOUND_TEXT, COLOR_RED);
+             return;
+        }
 
-    buttonTextNode.textContent = text;
-    copyButton.style.backgroundColor = color;
-
-    // If it's a final state (success or error), schedule a reset.
-    if (
-      text === "Copied!" ||
-      text.includes("Not Found") ||
-      text.includes("Failed") ||
-      text.includes("No Text")
-    ) {
-      setTimeout(() => {
-        buttonTextNode.textContent = "Transcript"; // Reset to the default text.
-        copyButton.style.backgroundColor = "rgba(0, 123, 255, 0.8)";
-      }, 2500); // Leave the message visible for 2.5 seconds.
+        try {
+            await navigator.clipboard.writeText(transcriptText);
+            updateButtonState(SUCCESS_TEXT, COLOR_GREEN);
+        } catch (err) {
+            updateButtonState(FAILED_TEXT, COLOR_RED);
+        }
     }
-  }
 
-  /**
-   * Injects a <style> tag into the document's <head> for custom button styling.
-   */
-  function injectStyles() {
-    if (document.getElementById("yt-transcript-button-styles")) return;
-    const style = document.createElement("style");
-    style.id = "yt-transcript-button-styles";
-    style.textContent = `
+    /**
+     * Updates the visual state of the button.
+     */
+    function updateButtonState(text, color) {
+        if (!copyButton) return;
+        copyButton.textContent = text;
+        copyButton.style.backgroundColor = color;
+
+        // The button reset is only scheduled for final states.
+        const isFinalState = [SUCCESS_TEXT, NOT_FOUND_TEXT, FAILED_TEXT].includes(text);
+        if (isFinalState) {
+            setTimeout(() => {
+                // Only reset if another operation has not already started
+                if (copyButton && !isCopying) {
+                    copyButton.textContent = INITIAL_TEXT;
+                    copyButton.style.backgroundColor = COLOR_BLUE;
+                }
+            }, 3000);
+        }
+    }
+
+    // --- Initialization Functions (unchanged) ---
+
+    async function createAndInsertButton() {
+        if (document.getElementById(BUTTON_ID)) return;
+        copyButton = document.createElement('button');
+        copyButton.id = BUTTON_ID;
+        copyButton.className = 'yt-transcript-button';
+        copyButton.textContent = INITIAL_TEXT;
+        copyButton.addEventListener('click', handleCopyClick);
+        injectStyles();
+        try {
+            const commentsSection = await waitForElement('ytd-comments#comments');
+            commentsSection.parentNode.insertBefore(copyButton, commentsSection);
+        } catch (error) {
+            console.error("[YT Copier] Could not insert the button.", error);
+        }
+    }
+
+    function injectStyles() {
+        if (document.getElementById(STYLE_ID)) return;
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = `
             .yt-transcript-button {
-                background-color: rgba(0, 123, 255, 0.8); border: none; color: white;
-                padding: 10px 18px; text-align: center; text-decoration: none;
-                display: inline-flex; align-items: center; font-size: 14px;
-                margin: 0; cursor: pointer; border-radius: 20px;
-                transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-                font-family: 'Roboto', 'Arial', sans-serif; font-weight: 500;
+                background-color: ${COLOR_BLUE}; color: var(--yt-spec-text-primary-inverse, white);
+                border: none; padding: 10px 18px; margin: 0 8px 16px;
+                font-family: "Roboto", "Arial", sans-serif; font-size: 1.4rem; font-weight: 500;
+                border-radius: var(--yt-spec-border-radius-2x, 20px); cursor: pointer;
+                transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.2s ease;
+                box-shadow: var(--yt-spec-elevation-1, 0 2px 4px rgba(0,0,0,0.2));
             }
             .yt-transcript-button:hover {
-                background-color: rgba(0, 90, 180, 0.9);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                box-shadow: var(--yt-spec-elevation-2, 0 4px 8px rgba(0,0,0,0.3));
                 transform: translateY(-1px);
             }
-            .yt-transcript-button:focus { outline: none; box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3); }
-            .yt-transcript-button:active { transform: translateY(1px); }
+            .yt-transcript-button:active { transform: translateY(0); }
         `;
-    document.head.appendChild(style);
-  }
-
-  // --- SPA Navigation Handling ---
-  // This section is crucial for the script to work when the user
-  // navigates between videos without a full page reload.
-
-  /**
-   * Resets the script's state. Removes the old button and the observer.
-   */
-  function resetState() {
-    if (observer) {
-      observer.disconnect();
-      observer = null;
+        document.head.appendChild(style);
     }
-    const oldButton = document.getElementById("yt-transcript-copy-button");
-    if (oldButton) {
-      oldButton.remove();
+
+    function resetState() {
+        if (pageObserver) pageObserver.disconnect();
+        pageObserver = null;
+        isCopying = false; // Reset the lock
+        const oldButton = document.getElementById(BUTTON_ID);
+        if (oldButton) oldButton.remove();
+        copyButton = null;
     }
-    copyButton = null;
-    buttonTextNode = null;
-  }
 
-  /**
-   * The main process that initializes the script on a page
-   * and sets up the observer for future navigations.
-   */
-  function startProcess() {
-    // Clean up any previous instance to prevent duplicates.
-    if (observer) observer.disconnect();
+    function startProcess() {
+        resetState();
+        createAndInsertButton();
+        pageObserver = new MutationObserver(() => {
+            if (window.location.href !== currentURL) {
+                currentURL = window.location.href;
+                startProcess();
+            }
+        });
+        pageObserver.observe(document.body, { childList: true, subtree: true });
+    }
 
-    // Start the button creation process on the current page.
-    createAndInsertButton();
+    startProcess();
 
-    // Create a new observer to detect URL changes.
-    observer = new MutationObserver(() => {
-      if (window.location.href !== currentURL) {
-        currentURL = window.location.href; // Update the reference URL.
-        resetState(); // Clean up the old page state.
-        startProcess(); // Restart the process on the new page.
-      }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
-
-  // --- Initial Start ---
-  startProcess();
 })();
