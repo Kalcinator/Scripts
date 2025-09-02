@@ -26,11 +26,11 @@ Tired of manually copying YouTube transcripts? This script adds a clean "Copy Tr
 2.  Click the **"Copy Transcript"** button.
 3.  The full, formatted transcript is now in your clipboard!
 
----
-
 ### 🚀 What's New in v3.1
 
 This version was completely overhauled for reliability on YouTube's modern architecture. The core logic was migrated from a slow `MutationObserver` to YouTube's native `yt-navigate-finish` event, fixing the bug where the button wouldn't appear when navigating between videos. The script is now faster, more efficient, and future-proof.
+
+---
 
 ### 🙏 Acknowledgements
 
