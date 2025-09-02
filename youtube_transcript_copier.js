@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Advanced YouTube Transcript Copier
-// @version      2.7
-// @description  The definitive script for copying YouTube transcripts. Engineered for reliability, it eliminates errors from spam-clicks and guarantees a smooth, seamless user experience.
-// @author       Amir Tehrani (Finalized by Gemini AI & Charles)
-// @match        https://www.youtube.com/watch*
+// @name         [EN] Advanced YouTube Transcript Copier
+// @version      3.1
+// @description  Works instantly on all videos. Perfectly handles YouTube's navigation (SPA) using modern event detection. Includes spam-click protection for a flawless user experience.
+// @author       Amir Tehrani (Optimized by Gemini AI & Charles)
+// @match        https://www.youtube.com/*
 // @grant        none
 // @namespace    https://greasyfork.org/
 // @icon         https://www.google.com/s2/favicons?domain=youtube.com
@@ -14,8 +14,8 @@
     'use strict';
 
     // --- Constants and State Variables ---
-    const BUTTON_ID = 'yt-transcript-copy-button-v2-7';
-    const STYLE_ID = 'yt-transcript-button-styles';
+    const BUTTON_ID = 'yt-transcript-copy-button-v3-1';
+    const STYLE_ID = 'yt-transcript-button-styles-v3-1';
     const INITIAL_TEXT = 'Copy Transcript';
     const COPYING_TEXT = 'Copying...';
     const SUCCESS_TEXT = 'Copied!';
@@ -26,78 +26,84 @@
     const COLOR_GREEN = 'var(--yt-spec-icon-active-other, #28a745)';
     const COLOR_RED = 'var(--yt-spec-text-link, #dc3545)';
 
-    let pageObserver = null;
-    let currentURL = window.location.href;
     let copyButton = null;
-    let isCopying = false; // --- STATE LOCK ---
+    let isCopying = false; // State lock to prevent multiple clicks
 
     /**
-     * Waits for an element to appear in the DOM.
+     * Waits for an element to be available in the DOM.
+     * @param {string} selector The CSS selector of the element to wait for.
+     * @param {Element} parent The parent element to search within.
+     * @param {number} timeout The time in milliseconds before giving up.
+     * @returns {Promise<Element>} A promise that resolves with the found element.
      */
     function waitForElement(selector, parent = document, timeout = 10000) {
         return new Promise((resolve, reject) => {
             const el = parent.querySelector(selector);
             if (el) return resolve(el);
-            const obs = new MutationObserver(() => {
+
+            const observer = new MutationObserver(() => {
                 const el = parent.querySelector(selector);
                 if (el) {
-                    obs.disconnect();
+                    observer.disconnect();
                     clearTimeout(timeoutId);
                     resolve(el);
                 }
             });
+
             const timeoutId = setTimeout(() => {
-                obs.disconnect();
-                reject(new Error(`[YT Copier] Timeout exceeded for: ${selector}`));
+                observer.disconnect();
+                reject(new Error(`[YT Copier] Timed out waiting for selector: "${selector}"`));
             }, timeout);
-            obs.observe(parent, { childList: true, subtree: true });
+
+            observer.observe(parent, { childList: true, subtree: true });
         });
     }
 
     /**
-     * Handles the copy logic, now protected against multiple clicks.
+     * Handles the copy button click, with spam protection.
      */
     async function handleCopyClick() {
-        // --- ANTI-SPAM MECHANISM ---
         if (isCopying) {
-            console.log("[YT Copier] Operation already in progress. Click ignored.");
-            return; // Ignore clicks if a copy operation is already running.
+            console.log("[YT Copier] Copy operation already in progress. Click ignored.");
+            return;
         }
 
-        isCopying = true; // 1. Lock the state
+        isCopying = true;
         updateButtonState(COPYING_TEXT, COLOR_BLUE);
 
         const originalScrollY = window.scrollY;
 
         try {
-            // Background click logic
+            // Simulate the clicks needed to display the transcript
             const expanderButton = document.querySelector('#description-inline-expander #expand.ytd-text-inline-expander');
             if (expanderButton) expanderButton.click();
 
             const showTranscriptButton = await waitForElement('ytd-video-description-transcript-section-renderer button', document, 5000);
             showTranscriptButton.click();
 
-            const collapserButton = await waitForElement('#description-inline-expander #collapse.ytd-text-inline-expander');
+            // Collapse the description to avoid disturbing the user
+            const collapserButton = await waitForElement('#description-inline-expander #collapse.ytd-text-inline-expander', document, 2000);
             collapserButton.click();
 
             const transcriptContainer = await waitForElement('ytd-transcript-renderer #segments-container');
             await copyTranscriptText(transcriptContainer);
 
         } catch (error) {
-            console.error("[YT Copier] Process failed:", error);
+            console.error("[YT Copier] Failed during the copy process:", error);
             updateButtonState(NOT_FOUND_TEXT, COLOR_RED);
         } finally {
-            // Restore scroll position, executed after YouTube's actions
+            // Restore scroll position after a short delay to allow YouTube's UI to settle.
             setTimeout(() => {
                 window.scrollTo({ top: originalScrollY, behavior: 'instant' });
-            }, 0);
+            }, 100);
 
-            isCopying = false; // 2. Unlock the state, no matter what happens
+            isCopying = false; // Release the lock, no matter what happens
         }
     }
 
     /**
-     * Extracts and copies the text.
+     * Extracts the transcript text and copies it to the clipboard.
+     * @param {Element} transcriptContainer The element containing the transcript segments.
      */
     async function copyTranscriptText(transcriptContainer) {
         const segments = transcriptContainer.querySelectorAll('ytd-transcript-segment-renderer');
@@ -109,8 +115,7 @@
         const lines = Array.from(segments).map(segment => {
             const timestampEl = segment.querySelector('.segment-timestamp');
             const textEl = segment.querySelector('.segment-text');
-            if (!timestampEl || !textEl) return null;
-            return `${timestampEl.innerText.trim()} ${textEl.innerText.trim()}`;
+            return (timestampEl && textEl) ? `${timestampEl.innerText.trim()} ${textEl.innerText.trim()}` : null;
         });
 
         const transcriptText = lines.filter(Boolean).join('\n');
@@ -123,24 +128,25 @@
             await navigator.clipboard.writeText(transcriptText);
             updateButtonState(SUCCESS_TEXT, COLOR_GREEN);
         } catch (err) {
+            console.error("[YT Copier] Error copying to clipboard:", err);
             updateButtonState(FAILED_TEXT, COLOR_RED);
         }
     }
 
     /**
-     * Updates the visual state of the button.
+     * Updates the button's appearance and text.
+     * @param {string} text The text to display.
+     * @param {string} color The background color of the button.
      */
     function updateButtonState(text, color) {
         if (!copyButton) return;
         copyButton.textContent = text;
         copyButton.style.backgroundColor = color;
 
-        // The button reset is only scheduled for final states.
         const isFinalState = [SUCCESS_TEXT, NOT_FOUND_TEXT, FAILED_TEXT].includes(text);
         if (isFinalState) {
             setTimeout(() => {
-                // Only reset if another operation has not already started
-                if (copyButton && !isCopying) {
+                if (copyButton && !isCopying) { // Only reset if another operation hasn't started
                     copyButton.textContent = INITIAL_TEXT;
                     copyButton.style.backgroundColor = COLOR_BLUE;
                 }
@@ -148,34 +154,47 @@
         }
     }
 
-    // --- Initialization Functions (unchanged) ---
-
+    /**
+     * Creates and inserts the copy button into the page.
+     */
     async function createAndInsertButton() {
-        if (document.getElementById(BUTTON_ID)) return;
+        if (document.getElementById(BUTTON_ID)) return; // Button already exists
+
+        injectStyles(); // Ensure styles are present
+
         copyButton = document.createElement('button');
         copyButton.id = BUTTON_ID;
         copyButton.className = 'yt-transcript-button';
         copyButton.textContent = INITIAL_TEXT;
         copyButton.addEventListener('click', handleCopyClick);
-        injectStyles();
+
         try {
             const commentsSection = await waitForElement('ytd-comments#comments');
             commentsSection.parentNode.insertBefore(copyButton, commentsSection);
         } catch (error) {
-            console.error("[YT Copier] Could not insert the button.", error);
+            console.error("[YT Copier] Could not find the comments section to insert the button.", error);
         }
     }
 
+    /**
+     * Injects the CSS styles needed for the button.
+     */
     function injectStyles() {
         if (document.getElementById(STYLE_ID)) return;
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = `
             .yt-transcript-button {
-                background-color: ${COLOR_BLUE}; color: var(--yt-spec-text-primary-inverse, white);
-                border: none; padding: 10px 18px; margin: 0 8px 16px;
-                font-family: "Roboto", "Arial", sans-serif; font-size: 1.4rem; font-weight: 500;
-                border-radius: var(--yt-spec-border-radius-2x, 20px); cursor: pointer;
+                background-color: ${COLOR_BLUE};
+                color: var(--yt-spec-text-primary-inverse, white);
+                border: none;
+                padding: 10px 18px;
+                margin: 0 8px 16px;
+                font-family: "Roboto", "Arial", sans-serif;
+                font-size: 1.4rem;
+                font-weight: 500;
+                border-radius: var(--yt-spec-border-radius-2x, 20px);
+                cursor: pointer;
                 transition: background-color 0.3s ease, transform 0.1s ease, box-shadow 0.2s ease;
                 box-shadow: var(--yt-spec-elevation-1, 0 2px 4px rgba(0,0,0,0.2));
             }
@@ -183,33 +202,50 @@
                 box-shadow: var(--yt-spec-elevation-2, 0 4px 8px rgba(0,0,0,0.3));
                 transform: translateY(-1px);
             }
-            .yt-transcript-button:active { transform: translateY(0); }
+            .yt-transcript-button:active {
+                transform: translateY(0);
+                box-shadow: var(--yt-spec-elevation-1, 0 2px 4px rgba(0,0,0,0.2));
+            }
         `;
         document.head.appendChild(style);
     }
 
+    /**
+     * Resets the script's state (removes the old button).
+     */
     function resetState() {
-        if (pageObserver) pageObserver.disconnect();
-        pageObserver = null;
-        isCopying = false; // Reset the lock
         const oldButton = document.getElementById(BUTTON_ID);
         if (oldButton) oldButton.remove();
         copyButton = null;
+        isCopying = false;
     }
 
-    function startProcess() {
-        resetState();
+    /**
+     * Main entry point. Checks if we are on a video page and injects the button.
+     */
+    function initialize() {
+        resetState(); // Clean up previous state on each navigation
+
+        // The script should only run on video watch pages
+        if (window.location.pathname !== '/watch') {
+            return;
+        }
+
+        console.log("[YT Copier] Initializing on a new video page.");
         createAndInsertButton();
-        pageObserver = new MutationObserver(() => {
-            if (window.location.href !== currentURL) {
-                currentURL = window.location.href;
-                startProcess();
-            }
-        });
-        pageObserver.observe(document.body, { childList: true, subtree: true });
     }
 
-    startProcess();
+
+    // --- SPA-Aware Startup Logic ---
+
+    // Listen for YouTube's custom navigation event for perfect reactivity.
+    document.addEventListener('yt-navigate-finish', initialize);
+
+    // Handle the initial page load case (direct access or F5).
+    if (document.body) {
+        initialize();
+    } else {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    }
 
 })();
-
